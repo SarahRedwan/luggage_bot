@@ -1,5 +1,4 @@
+luggage.db
 venv/
 __pycache__/
 *.pyc
-luggage.db
-venv/
