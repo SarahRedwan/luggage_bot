@@ -13,7 +13,8 @@ from telegram.ext import (
 )
 
 # ---------------- TOKEN ----------------
-TOKEN = os.getenv("8948375757:AAHerJYwPH9y24j9LCb-_i0ZW-syF2CLqOY")
+# Expect BOT_TOKEN from environment (Railway Variables)
+TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("BOT_TOKEN is not set!")
 
@@ -269,10 +270,13 @@ def webhook():
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
+    # Remove old webhook, then set new one if WEBHOOK_URL is provided
     application.bot.delete_webhook()
 
     WEBHOOK_URL = os.getenv("WEBHOOK_URL")
     if WEBHOOK_URL:
         application.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
 
-    app.run(host="0.0.0.0", port=10000)
+    # Use Railway's PORT env var
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
