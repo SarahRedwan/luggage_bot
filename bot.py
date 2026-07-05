@@ -1,6 +1,5 @@
 import sqlite3
 import os
-import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
@@ -58,39 +57,39 @@ def init_db():
     conn.close()
 
 # ---------------- START ----------------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update.message.reply_text(
         "🚀 Welcome to Luggage Connect\n\n"
         "Use /traveler → register trip\n"
         "Use /sender → send package"
     )
 
 # ---------------- TRAVELER FLOW ----------------
-async def traveler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🌍 Enter departure country:")
+def traveler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update.message.reply_text("🌍 Enter departure country:")
     return TR_FROM
 
-async def tr_from(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def tr_from(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["from"] = update.message.text
-    await update.message.reply_text("🎯 Enter destination country:")
+    update.message.reply_text("🎯 Enter destination country:")
     return TR_TO
 
-async def tr_to(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def tr_to(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["to"] = update.message.text
-    await update.message.reply_text("📅 Enter date (YYYY-MM-DD):")
+    update.message.reply_text("📅 Enter date (YYYY-MM-DD):")
     return TR_DATE
 
-async def tr_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def tr_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["date"] = update.message.text
-    await update.message.reply_text("🧳 Free luggage space (kg):")
+    update.message.reply_text("🧳 Free luggage space (kg):")
     return TR_SPACE
 
-async def tr_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def tr_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["space"] = update.message.text
-    await update.message.reply_text("📱 Enter phone number or type skip:")
+    update.message.reply_text("📱 Enter phone number or type skip:")
     return TR_PHONE
 
-async def tr_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def tr_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = update.message.text
     if phone.lower() == "skip":
         phone = "Not provided"
@@ -119,7 +118,7 @@ async def tr_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.commit()
     conn.close()
 
-    await update.message.reply_text(
+    update.message.reply_text(
         f"✅ Trip Registered!\n\n"
         f"Trip ID: T{trip_id:03d}\n"
         f"{context.user_data['from']} → {context.user_data['to']}\n"
@@ -129,31 +128,31 @@ async def tr_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 # ---------------- SENDER FLOW ----------------
-async def sender(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("📦 Enter package origin country:")
+def sender(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update.message.reply_text("📦 Enter package origin country:")
     return SD_FROM
 
-async def sd_from(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def sd_from(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["s_from"] = update.message.text
-    await update.message.reply_text("🎯 Enter destination country:")
+    update.message.reply_text("🎯 Enter destination country:")
     return SD_TO
 
-async def sd_to(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def sd_to(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["s_to"] = update.message.text
-    await update.message.reply_text("⚖️ Enter weight (kg):")
+    update.message.reply_text("⚖️ Enter weight (kg):")
     return SD_WEIGHT
 
-async def sd_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def sd_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["weight"] = int(update.message.text)
-    await update.message.reply_text("📝 Describe item:")
+    update.message.reply_text("📝 Describe item:")
     return SD_DESC
 
-async def sd_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def sd_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["desc"] = update.message.text
-    await update.message.reply_text("📱 Enter phone number or type skip:")
+    update.message.reply_text("📱 Enter phone number or type skip:")
     return SD_PHONE
 
-async def sd_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def sd_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = update.message.text
     if phone.lower() == "skip":
         phone = "Not provided"
@@ -199,7 +198,7 @@ async def sd_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     if match:
-        await update.message.reply_text(
+        update.message.reply_text(
             "✅ MATCH FOUND!\n\n"
             f"Traveler: {match[0]}\n"
             f"Phone: {match[1]}\n"
@@ -207,13 +206,13 @@ async def sd_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Available Space: {match[3]} kg"
         )
     else:
-        await update.message.reply_text("❌ No match found yet.")
+        update.message.reply_text("❌ No match found yet.")
 
     return ConversationHandler.END
 
 # ---------------- CANCEL ----------------
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ Cancelled.")
+def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update.message.reply_text("❌ Cancelled.")
     return ConversationHandler.END
 
 # ---------------- INIT ----------------
