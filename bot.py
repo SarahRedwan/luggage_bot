@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import asyncio
+import threading
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
@@ -252,7 +253,7 @@ app = Flask(__name__)
 def home():
     return "Bot is running!", 200
 
-# ⭐ FIXED — webhook is now sync, not async
+# ⭐ FIXED — webhook is sync
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
@@ -264,6 +265,12 @@ async def setup_webhook():
     await application.bot.delete_webhook()
     if WEBHOOK_URL:
         await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
+
+# ⭐ Start PTB in background thread
+def run_ptb():
+    application.run_async()
+
+threading.Thread(target=run_ptb).start()
 
 if __name__ == "__main__":
     asyncio.run(setup_webhook())
