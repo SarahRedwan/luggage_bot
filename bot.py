@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
@@ -12,7 +13,7 @@ from telegram.ext import (
 )
 
 # ---------------- TOKEN ----------------
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("8948375757:AAHerJYwPH9y24j9LCb-_i0ZW-syF2CLqOY")
 if not TOKEN:
     raise ValueError("BOT_TOKEN is not set!")
 
@@ -175,6 +176,7 @@ async def sd_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["desc"]
     ))
 
+    # MATCHING
     c.execute("""
     SELECT username, phone, date, space
     FROM trips
@@ -200,11 +202,10 @@ async def sd_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Traveler: {match[0]}\n"
             f"Phone: {match[1]}\n"
             f"Date: {match[2]}\n"
-            f"Available Space: {match[3]} kg\n\n"
-            "You can contact them directly now."
+            f"Available Space: {match[3]} kg"
         )
     else:
-        await update.message.reply_text("❌ No match found yet. Try later.")
+        await update.message.reply_text("❌ No match found yet.")
 
     return ConversationHandler.END
 
@@ -213,12 +214,14 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Cancelled.")
     return ConversationHandler.END
 
-# ---------------- INIT BOT ----------------
+# ---------------- INIT ----------------
 init_db()
 
 application = Application.builder().token(TOKEN).build()
+application.initialize()
 
-# Conversation handlers
+application.add_handler(CommandHandler("start", start))
+
 traveler_conv = ConversationHandler(
     entry_points=[CommandHandler("traveler", traveler)],
     states={
@@ -243,12 +246,10 @@ sender_conv = ConversationHandler(
     fallbacks=[CommandHandler("cancel", cancel)]
 )
 
-# Add handlers
-application.add_handler(CommandHandler("start", start))
 application.add_handler(traveler_conv)
 application.add_handler(sender_conv)
 
-# ---------------- FLASK SERVER ----------------
+# ---------------- FLASK APP ----------------
 app = Flask(__name__)
 
 @app.route("/", methods=["GET"])
@@ -258,14 +259,20 @@ def home():
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-    application.process_update(update)
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(application.process_update(update))
+    loop.close()
+
     return "OK", 200
 
-# ---------------- START WEBHOOK ----------------
+# ---------------- RUN ----------------
 if __name__ == "__main__":
     application.bot.delete_webhook()
 
-    RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")
-    application.bot.set_webhook(url=f"{RENDER_URL}/{TOKEN}")
+    WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+    if WEBHOOK_URL:
+        application.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
 
     app.run(host="0.0.0.0", port=10000)
