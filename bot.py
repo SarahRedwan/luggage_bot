@@ -13,10 +13,11 @@ from telegram.ext import (
 )
 
 # ---------------- TOKEN ----------------
-# Expect BOT_TOKEN from environment (Railway Variables)
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("BOT_TOKEN is not set!")
+
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 # ---------------- STATES ----------------
 TR_FROM, TR_TO, TR_DATE, TR_SPACE, TR_PHONE = range(5)
@@ -219,7 +220,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 init_db()
 
 application = Application.builder().token(TOKEN).build()
-application.initialize()
 
 application.add_handler(CommandHandler("start", start))
 
@@ -258,25 +258,18 @@ def home():
     return "Bot is running!", 200
 
 @app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
+async def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(application.process_update(update))
-    loop.close()
-
+    await application.update_queue.put(update)
     return "OK", 200
 
 # ---------------- RUN ----------------
-if __name__ == "__main__":
-    # Remove old webhook, then set new one if WEBHOOK_URL is provided
-    application.bot.delete_webhook()
-
-    WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+async def setup_webhook():
+    await application.bot.delete_webhook()
     if WEBHOOK_URL:
-        application.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
+        await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
 
-    # Use Railway's PORT env var
+if __name__ == "__main__":
+    asyncio.run(setup_webhook())
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
