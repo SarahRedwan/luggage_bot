@@ -1,112 +1,272 @@
-# main.py
-import os
 import sqlite3
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
+import os
+from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
-    Application, CommandHandler, ConversationHandler,
-    MessageHandler, ContextTypes, filters
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ConversationHandler,
+    ContextTypes,
+    filters
 )
 
-TOKEN=os.environ["BOT_TOKEN"]
-WEBHOOK_URL=os.environ["WEBHOOK_URL"]
+# ---------------- TOKEN ----------------
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("BOT_TOKEN is not set!")
 
-TR_FROM,TR_TO,TR_DATE,TR_SPACE,TR_PHONE=range(5)
-SD_FROM,SD_TO,SD_WEIGHT,SD_DESC,SD_PHONE=range(5,10)
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
+# ---------------- STATES ----------------
+TR_FROM, TR_TO, TR_DATE, TR_SPACE, TR_PHONE = range(5)
+SD_FROM, SD_TO, SD_WEIGHT, SD_DESC, SD_PHONE = range(5, 10)
+
+# ---------------- DATABASE ----------------
 def init_db():
-    con=sqlite3.connect("luggage.db")
-    c=con.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS trips(id INTEGER PRIMARY KEY,user_id INTEGER,username TEXT,phone TEXT,from_country TEXT,to_country TEXT,date TEXT,space INTEGER)")
-    c.execute("CREATE TABLE IF NOT EXISTS packages(id INTEGER PRIMARY KEY,user_id INTEGER,username TEXT,phone TEXT,from_country TEXT,to_country TEXT,weight INTEGER,description TEXT)")
-    con.commit(); con.close()
+    conn = sqlite3.connect("luggage.db")
+    c = conn.cursor()
 
-async def start(update:Update,ctx:ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🚀 Welcome!\n/traveler\n/sender")
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS trips (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        username TEXT,
+        phone TEXT,
+        from_country TEXT,
+        to_country TEXT,
+        date TEXT,
+        space INTEGER
+    )
+    """)
 
-async def traveler(update,ctx):
-    await update.message.reply_text("Departure country:")
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS packages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        username TEXT,
+        phone TEXT,
+        from_country TEXT,
+        to_country TEXT,
+        weight INTEGER,
+        description TEXT
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+# ---------------- START ----------------
+def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update.message.reply_text(
+        "🚀 Welcome to Luggage Connect\n\n"
+        "Use /traveler → register trip\n"
+        "Use /sender → send package"
+    )
+
+# ---------------- TRAVELER FLOW ----------------
+def traveler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update.message.reply_text("🌍 Enter departure country:")
     return TR_FROM
-async def tr_from(update,ctx):
-    ctx.user_data["from"]=update.message.text; await update.message.reply_text("Destination:"); return TR_TO
-async def tr_to(update,ctx):
-    ctx.user_data["to"]=update.message.text; await update.message.reply_text("Date YYYY-MM-DD:"); return TR_DATE
-async def tr_date(update,ctx):
-    ctx.user_data["date"]=update.message.text; await update.message.reply_text("Space kg:"); return TR_SPACE
-async def tr_space(update,ctx):
-    ctx.user_data["space"]=int(update.message.text); await update.message.reply_text("Phone or skip:"); return TR_PHONE
-async def tr_phone(update,ctx):
-    phone=update.message.text
-    if phone.lower()=="skip": phone="Not provided"
-    u=update.effective_user
-    con=sqlite3.connect("luggage.db"); c=con.cursor()
-    c.execute("INSERT INTO trips(user_id,username,phone,from_country,to_country,date,space) VALUES(?,?,?,?,?,?,?)",
-              (u.id, "@"+u.username if u.username else "No username", phone, ctx.user_data["from"],ctx.user_data["to"],ctx.user_data["date"],ctx.user_data["space"]))
-    tid=c.lastrowid; con.commit(); con.close()
-    await update.message.reply_text(f"Trip registered T{tid:03d}")
+
+def tr_from(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["from"] = update.message.text
+    update.message.reply_text("🎯 Enter destination country:")
+    return TR_TO
+
+def tr_to(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["to"] = update.message.text
+    update.message.reply_text("📅 Enter date (YYYY-MM-DD):")
+    return TR_DATE
+
+def tr_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["date"] = update.message.text
+    update.message.reply_text("🧳 Free luggage space (kg):")
+    return TR_SPACE
+
+def tr_space(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["space"] = update.message.text
+    update.message.reply_text("📱 Enter phone number or type skip:")
+    return TR_PHONE
+
+def tr_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    phone = update.message.text
+    if phone.lower() == "skip":
+        phone = "Not provided"
+
+    username = update.effective_user.username
+    username = f"@{username}" if username else "No username"
+
+    conn = sqlite3.connect("luggage.db")
+    c = conn.cursor()
+
+    c.execute("""
+    INSERT INTO trips
+    (user_id, username, phone, from_country, to_country, date, space)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        update.effective_user.id,
+        username,
+        phone,
+        context.user_data["from"],
+        context.user_data["to"],
+        context.user_data["date"],
+        int(context.user_data["space"])
+    ))
+
+    trip_id = c.lastrowid
+    conn.commit()
+    conn.close()
+
+    update.message.reply_text(
+        f"✅ Trip Registered!\n\n"
+        f"Trip ID: T{trip_id:03d}\n"
+        f"{context.user_data['from']} → {context.user_data['to']}\n"
+        f"Space: {context.user_data['space']} kg"
+    )
+
     return ConversationHandler.END
 
-async def sender(update,ctx):
-    await update.message.reply_text("Origin:"); return SD_FROM
-async def sd_from(update,ctx):
-    ctx.user_data["sf"]=update.message.text; await update.message.reply_text("Destination:"); return SD_TO
-async def sd_to(update,ctx):
-    ctx.user_data["st"]=update.message.text; await update.message.reply_text("Weight:"); return SD_WEIGHT
-async def sd_weight(update,ctx):
-    ctx.user_data["w"]=int(update.message.text); await update.message.reply_text("Description:"); return SD_DESC
-async def sd_desc(update,ctx):
-    ctx.user_data["d"]=update.message.text; await update.message.reply_text("Phone or skip:"); return SD_PHONE
-async def sd_phone(update,ctx):
-    phone=update.message.text
-    if phone.lower()=="skip": phone="Not provided"
-    u=update.effective_user
-    con=sqlite3.connect("luggage.db"); c=con.cursor()
-    c.execute("INSERT INTO packages(user_id,username,phone,from_country,to_country,weight,description) VALUES(?,?,?,?,?,?,?)",
-              (u.id,"@"+u.username if u.username else "No username",phone,ctx.user_data["sf"],ctx.user_data["st"],ctx.user_data["w"],ctx.user_data["d"]))
-    c.execute("SELECT username,phone,date,space FROM trips WHERE from_country=? AND to_country=? AND space>=? ORDER BY id DESC LIMIT 1",
-              (ctx.user_data["sf"],ctx.user_data["st"],ctx.user_data["w"]))
-    m=c.fetchone(); con.commit(); con.close()
-    if m: await update.message.reply_text(f"Match!\nTraveler:{m[0]}\nPhone:{m[1]}\nDate:{m[2]}\nSpace:{m[3]}")
-    else: await update.message.reply_text("No match yet.")
+# ---------------- SENDER FLOW ----------------
+def sender(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update.message.reply_text("📦 Enter package origin country:")
+    return SD_FROM
+
+def sd_from(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["s_from"] = update.message.text
+    update.message.reply_text("🎯 Enter destination country:")
+    return SD_TO
+
+def sd_to(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["s_to"] = update.message.text
+    update.message.reply_text("⚖️ Enter weight (kg):")
+    return SD_WEIGHT
+
+def sd_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["weight"] = int(update.message.text)
+    update.message.reply_text("📝 Describe item:")
+    return SD_DESC
+
+def sd_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["desc"] = update.message.text
+    update.message.reply_text("📱 Enter phone number or type skip:")
+    return SD_PHONE
+
+def sd_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    phone = update.message.text
+    if phone.lower() == "skip":
+        phone = "Not provided"
+
+    username = update.effective_user.username
+    username = f"@{username}" if username else "No username"
+
+    conn = sqlite3.connect("luggage.db")
+    c = conn.cursor()
+
+    c.execute("""
+    INSERT INTO packages
+    (user_id, username, phone, from_country, to_country, weight, description)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        update.effective_user.id,
+        username,
+        phone,
+        context.user_data["s_from"],
+        context.user_data["s_to"],
+        context.user_data["weight"],
+        context.user_data["desc"]
+    ))
+
+    # MATCHING
+    c.execute("""
+    SELECT username, phone, date, space
+    FROM trips
+    WHERE from_country=?
+    AND to_country=?
+    AND space>=?
+    ORDER BY id DESC
+    LIMIT 1
+    """, (
+        context.user_data["s_from"],
+        context.user_data["s_to"],
+        context.user_data["weight"]
+    ))
+
+    match = c.fetchone()
+
+    conn.commit()
+    conn.close()
+
+    if match:
+        update.message.reply_text(
+            "✅ MATCH FOUND!\n\n"
+            f"Traveler: {match[0]}\n"
+            f"Phone: {match[1]}\n"
+            f"Date: {match[2]}\n"
+            f"Available Space: {match[3]} kg"
+        )
+    else:
+        update.message.reply_text("❌ No match found yet.")
+
     return ConversationHandler.END
 
-async def cancel(update,ctx):
-    await update.message.reply_text("Cancelled"); return ConversationHandler.END
+# ---------------- CANCEL ----------------
+def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    update.message.reply_text("❌ Cancelled.")
+    return ConversationHandler.END
 
-application=Application.builder().token(TOKEN).build()
-application.add_handler(CommandHandler("start",start))
-application.add_handler(ConversationHandler(entry_points=[CommandHandler("traveler",traveler)],states={
-TR_FROM:[MessageHandler(filters.TEXT & ~filters.COMMAND,tr_from)],
-TR_TO:[MessageHandler(filters.TEXT & ~filters.COMMAND,tr_to)],
-TR_DATE:[MessageHandler(filters.TEXT & ~filters.COMMAND,tr_date)],
-TR_SPACE:[MessageHandler(filters.TEXT & ~filters.COMMAND,tr_space)],
-TR_PHONE:[MessageHandler(filters.TEXT & ~filters.COMMAND,tr_phone)]},fallbacks=[CommandHandler("cancel",cancel)]))
-application.add_handler(ConversationHandler(entry_points=[CommandHandler("sender",sender)],states={
-SD_FROM:[MessageHandler(filters.TEXT & ~filters.COMMAND,sd_from)],
-SD_TO:[MessageHandler(filters.TEXT & ~filters.COMMAND,sd_to)],
-SD_WEIGHT:[MessageHandler(filters.TEXT & ~filters.COMMAND,sd_weight)],
-SD_DESC:[MessageHandler(filters.TEXT & ~filters.COMMAND,sd_desc)],
-SD_PHONE:[MessageHandler(filters.TEXT & ~filters.COMMAND,sd_phone)]},fallbacks=[CommandHandler("cancel",cancel)]))
+# ---------------- INIT ----------------
+init_db()
 
-@asynccontextmanager
-async def lifespan(app):
-    init_db()
-    await application.initialize()
-    await application.start()
-    await application.bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}")
-    yield
-    await application.stop()
-    await application.shutdown()
+application = Application.builder().token(TOKEN).build()
 
-app=FastAPI(lifespan=lifespan)
+application.add_handler(CommandHandler("start", start))
+application.add_handler(ConversationHandler(
+    entry_points=[CommandHandler("traveler", traveler)],
+    states={
+        TR_FROM: [MessageHandler(filters.TEXT & ~filters.COMMAND, tr_from)],
+        TR_TO: [MessageHandler(filters.TEXT & ~filters.COMMAND, tr_to)],
+        TR_DATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, tr_date)],
+        TR_SPACE: [MessageHandler(filters.TEXT & ~filters.COMMAND, tr_space)],
+        TR_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, tr_phone)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)]
+))
+application.add_handler(ConversationHandler(
+    entry_points=[CommandHandler("sender", sender)],
+    states={
+        SD_FROM: [MessageHandler(filters.TEXT & ~filters.COMMAND, sd_from)],
+        SD_TO: [MessageHandler(filters.TEXT & ~filters.COMMAND, sd_to)],
+        SD_WEIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, sd_weight)],
+        SD_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, sd_desc)],
+        SD_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, sd_phone)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)]
+))
 
-@app.get("/")
-async def root(): return {"status":"ok"}
+# ---------------- FLASK APP ----------------
+app = Flask(__name__)
 
-@app.post("/{token}")
-async def webhook(token:str, request:Request):
-    if token!=TOKEN: return {"ok":False}
-    update=Update.de_json(await request.json(), application.bot)
-    await application.process_update(update)
-    return {"ok":True}
+@app.route("/", methods=["GET"])
+def home():
+    return "Bot is running!", 200
+
+# ⭐ CORRECT WEBHOOK HANDLER FOR PTB v20
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), application.bot)
+    application.process_update(update)
+    return "OK", 200
+
+# ---------------- RUN ----------------
+async def setup_webhook():
+    await application.bot.delete_webhook()
+    if WEBHOOK_URL:
+        await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
+
+if __name__ == "__main__":
+    asyncio.run(setup_webhook())
+    application.initialize()
+    application.start()
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
