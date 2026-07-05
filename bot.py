@@ -222,8 +222,7 @@ init_db()
 application = Application.builder().token(TOKEN).build()
 
 application.add_handler(CommandHandler("start", start))
-
-traveler_conv = ConversationHandler(
+application.add_handler(ConversationHandler(
     entry_points=[CommandHandler("traveler", traveler)],
     states={
         TR_FROM: [MessageHandler(filters.TEXT & ~filters.COMMAND, tr_from)],
@@ -233,9 +232,8 @@ traveler_conv = ConversationHandler(
         TR_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, tr_phone)],
     },
     fallbacks=[CommandHandler("cancel", cancel)]
-)
-
-sender_conv = ConversationHandler(
+))
+application.add_handler(ConversationHandler(
     entry_points=[CommandHandler("sender", sender)],
     states={
         SD_FROM: [MessageHandler(filters.TEXT & ~filters.COMMAND, sd_from)],
@@ -245,10 +243,7 @@ sender_conv = ConversationHandler(
         SD_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, sd_phone)],
     },
     fallbacks=[CommandHandler("cancel", cancel)]
-)
-
-application.add_handler(traveler_conv)
-application.add_handler(sender_conv)
+))
 
 # ---------------- FLASK APP ----------------
 app = Flask(__name__)
@@ -257,10 +252,11 @@ app = Flask(__name__)
 def home():
     return "Bot is running!", 200
 
+# ⭐ FIXED — webhook is now sync, not async
 @app.route(f"/{TOKEN}", methods=["POST"])
-async def webhook():
+def webhook():
     update = Update.de_json(request.get_json(force=True), application.bot)
-    await application.update_queue.put(update)
+    application.update_queue.put_nowait(update)
     return "OK", 200
 
 # ---------------- RUN ----------------
