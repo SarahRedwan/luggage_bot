@@ -266,9 +266,11 @@ async def setup_webhook():
     if WEBHOOK_URL:
         await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
 
-# ⭐ Start PTB in background thread
+# ⭐ Start PTB correctly
 def run_ptb():
-    application.run_async()
+    application.initialize()
+    application.start()
+    application.updater.start()
 
 threading.Thread(target=run_ptb).start()
 
